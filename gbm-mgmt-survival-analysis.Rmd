@@ -1,0 +1,446 @@
+---
+title: "gbm-mgmt-survival-analysis"
+author: "Chihhui(Daisy) Wang"
+date: "2025-12-01"
+output:
+  html_document:
+    toc: true           
+    toc_float: true     
+    toc_depth: 3
+    theme: readable     
+    code_folding: hide  
+    df_print: paged     
+    highlight: tango   
+---
+
+## Part I – Analysis of MGMT Expression in TCGA GBM
+
+*Please see all the codes by choosing 'Show All Code' from the toggle on the upper right corner*
+
+### 1. Introduction
+
+#### 1.1 Background
+
+Glioblastoma multiforme (GBM) is an aggressive primary brain tumor with poor prognosis. O^6^-methylguanine-DNA methyltransferase (MGMT) is a DNA repair enzyme that removes alkyl groups from the O^6^ position of guanine, thereby counteracting the cytotoxic effects of alkylating agents such as temozolomide. MGMT expression and promoter methylation status are widely studied as prognostic and predictive biomarkers in GBM.
+
+#### 1.2 Description of the dataset
+
+For this project, I used publicly available data from the TCGA PanCancer Atlas GBM cohort accessed via cBioPortal. Clinical data and MGMT mRNA expression (z-scores from RNA-Seq V2 RSEM) were downloaded and merged. After filtering for primary/untreated GBM samples and removing observations with missing values, the final analytic dataset contained **100 patients** and the following key variables:
+
+-   `MGMT`: MGMT mRNA expression z-score (continuous)
+-   `Diagnosis.Age`: age at diagnosis in years (continuous)
+-   `Sex`: sex (Female / Male)
+-   `OS_MONTHS`: overall survival time in months
+-   `OS_STATUS`: overall survival status (event/censor)
+-   `Tumor.Type`: tumor type annotation (all GBM)
+-   `Sample_ID`, `Patient.ID`: identifiers
+
+Raw clinical and MGMT expression data were downloaded from cBioPortal (TCGA PanCancer Atlas GBM).\
+Using R, I merged clinical and expression tables by `Sample_ID`, restricted the cohort to primary/untreated GBM, and removed observations with missing values in key variables (age, sex, survival, MGMT expression).
+
+The resulting cleaned dataset (`gbm_clean`) contains 100 patients and 8 variables and is saved as `GBM_MGMT_final_dataset.csv`.
+
+Full preprocessing R code is provided in Appendix A.
+
+#### 1.3 Rationale for the analyses
+
+In Part I, I focused on how MGMT expression relates to basic demographic variables: age and sex. These are simple but clinically important covariates that are usually considered in biomarker studies.
+
+-   The relationship between **MGMT expression and age** involves two continuous variables, so correlation analysis and simple linear regression are appropriate.
+-   The relationship between **MGMT expression and sex** involves a continuous outcome and a binary group, so two-sample tests (Welch’s t-test and Wilcoxon rank-sum test) are appropriate.
+
+These analyses allow us to test whether MGMT expression varies systematically with age or sex in this GBM cohort.
+
+#### 1.4 Description of analyses and R packages
+
+All analyses were performed in **R** using:
+
+-   Base R functions: `cor.test()`, `lm()`, `t.test()`, `boxplot()`, `plot()`
+-   The **dplyr** package for data manipulation (`mutate()`, pipes)
+
+In Part I, I conducted:
+
+1.  **Analysis 1:** MGMT vs age – Pearson correlation and simple linear regression\
+2.  **Analysis 2:** MGMT vs sex – Welch two-sample t-test and Wilcoxon rank-sum test
+
+### 2. Data Loading
+
+The cleaned dataset generated during preprocessing was saved as\
+`GBM_MGMT_final_dataset.csv`.\
+Here we load the dataset into R for the analyses in Part I.
+
+```{r load-data, echo=TRUE, message=FALSE, warning=FALSE}
+library(dplyr)
+gbm_clean <- read.csv("GBM_MGMT_final_dataset.csv")
+
+#dim(gbm_clean)
+head(gbm_clean)
+```
+
+### 3. Analyses (Part I)
+
+In Part I, I performed two distinct statistical analyses:
+
+1.  Analysis 1: Association between MGMT expression and age (correlation and linear regression).\
+2.  Analysis 2: Differences in MGMT expression by sex (Welch’s t-test and Wilcoxon rank-sum test).
+
+For both analyses, the significance level was set to **α = 0.05** (95% confidence level).\
+No multiple-comparisons correction (FWER or Q-value) was applied because only two primary analyses were performed.
+
+#### 3.1 Analysis 1 – MGMT Expression vs Age
+
+##### 3.1.1 Hypotheses and significance level
+
+We tested whether MGMT expression is linearly associated with age at diagnosis.
+
+-   **H₀:** There is no linear association between MGMT expression and age\
+    (correlation = 0; regression slope β₁ = 0).\
+-   **H₁:** There is a linear association between MGMT expression and age\
+    (correlation ≠ 0; β₁ ≠ 0).
+
+The significance level was set at **α = 0.05** (95% confidence level).
+
+```{r analysis1-mgmt-age, echo=TRUE, message=FALSE, warning=FALSE}
+# Pearson correlation between MGMT and age
+cor_age <- cor.test(gbm_clean$MGMT, gbm_clean$Diagnosis.Age, method = "pearson")
+cor_age
+
+# Simple linear regression: MGMT ~ Age
+fit_age <- lm(MGMT ~ Diagnosis.Age, data = gbm_clean)
+summary(fit_age)
+```
+
+```{r fig1-mgmt-hist, echo=TRUE}
+hist(gbm_clean$MGMT,
+     main = "Figure 1. Distribution of MGMT expression (z-scores)",
+     xlab = "MGMT expression (z-score)")
+```
+
+```{r fig2-mgmt-age-scatter, fig.cap="Figure 2. Scatterplot of MGMT mRNA expression (z-score) versus age at diagnosis in TCGA GBM patients. The fitted regression line shows no obvious trend, consistent with the non-significant correlation and regression results.", echo=TRUE}
+plot(gbm_clean$Diagnosis.Age, gbm_clean$MGMT,
+     xlab = "Age at diagnosis (years)",
+     ylab = "MGMT expression (z-score)",
+     main = "Figure 2. MGMT expression vs age at diagnosis")
+lines(lowess(gbm_clean$Diagnosis.Age, gbm_clean$MGMT))
+```
+
+#### 3.1.2 Results and interpretation
+
+The Pearson correlation between MGMT expression and age was very close to zero\
+(e.g., r ≈ -0.01, p ≫ 0.05), indicating no evidence of a linear association.\
+Consistently, the regression slope for age was near zero and non-significant, and the model explained essentially none of the variance in MGMT expression (R² ≈ 0).
+
+**Interpretation:**\
+These results suggest that MGMT expression is not associated with age at diagnosis in this GBM cohort. Age does not appear to be a meaningful predictor of MGMT mRNA levels.
+
+### 3.2 Analysis 2 – MGMT Expression vs Sex
+
+#### 3.2.1 Hypotheses and significance level
+
+We compared MGMT expression between female and male patients.
+
+-   **H₀:** Mean MGMT expression is the same in females and males.\
+-   **H₁:** Mean MGMT expression differs between females and males.
+
+The significance level was set at **α = 0.05** (95% confidence level).\
+We used Welch’s two-sample t-test and the Wilcoxon rank-sum test to assess robustness to normality assumptions.
+
+```{r analysis2-mgmt-sex, echo=TRUE, message=FALSE, warning=FALSE}
+# Ensure Sex is a factor
+gbm_clean$Sex <- factor(gbm_clean$Sex)
+
+# Group summaries
+tapply(gbm_clean$MGMT, gbm_clean$Sex, summary)
+
+# Welch two-sample t-test
+tt_sex <- t.test(MGMT ~ Sex, data = gbm_clean)
+tt_sex
+
+# Wilcoxon rank-sum test (non-parametric)
+wilcox_sex <- wilcox.test(MGMT ~ Sex, data = gbm_clean)
+wilcox_sex
+```
+
+Using a Welch two-sample t-test, the mean MGMT expression did not differ significantly between female and male patients (mean −0.19 vs 0.13, respectively, t = −1.63, df = 75.1, p = 0.11). The 95% confidence interval for the mean difference (Female − Male) ranged from −0.71 to 0.07, which includes zero, indicating no strong evidence of a sex-related difference in MGMT expression.
+
+```{r figure3-mgmt-sex, fig.cap="Figure 3. Boxplot of MGMT mRNA expression (z-score) stratified by sex (female vs male).The distributions overlap substantially, and no statistically significant difference was observed between the two groups.", echo=TRUE}
+boxplot(MGMT ~ Sex,
+        data = gbm_clean,
+        xlab = "Sex",
+        ylab = "MGMT expression (z-score)",
+        main = "Figure 3. MGMT expression by sex in TCGA GBM")
+```
+
+#### 3.2.2 Results and interpretation
+
+The graph (Fig.3) indicated slightly lower mean MGMT expression in females than in males, but the differences were modest. Welch’s two-sample t-test did not detect a statistically significant difference in mean MGMT expression between sexes (p \> 0.05). The Wilcoxon rank-sum test produced a similar non-significant result, supporting the robustness of this conclusion.
+
+**Interpretation:**\
+MGMT expression does not significantly differ between female and male GBM patients in this dataset. Sex is unlikely to be a major determinant of MGMT mRNA levels.
+
+### 4. Conclusions and Discussion (Part I)
+
+In Part I, I looked into whether MGMT mRNA expression in TCGA GBM patients is associated with two demographic variables: age and sex. Using correlation analysis and simple linear regression, I found no evidence of a linear relationship between MGMT expression and age at diagnosis. Similarly, Welch’s t-test and the Wilcoxon rank-sum test showed no statistically significant difference in MGMT expression between females and males.
+
+These findings suggest that demographic factors such as age and sex do **not** explain variability in MGMT expression in this cohort. This is consistent with the current understanding that MGMT regulation in GBM is primarily driven by molecular mechanisms, such as promoter methylation and tumor-specific biology, rather than by patient demographics.
+
+Limitations of this analysis include the modest sample size (n = 100 after filtering) and the lack of direct information on MGMT promoter methylation and other genomic alterations (e.g., IDH1 mutation). Future analyses could integrate these molecular features, as well as treatment information (e.g., temozolomide exposure), and extend the modeling framework to multivariable regression or survival analysis to further evaluate MGMT as a prognostic or predictive biomarker.
+
+## Part II – Cox Proportional Hazards Analysis of MGMT and Survival
+
+### 1. Introduction
+
+#### 1.1 Novelty of the Analysis
+
+For the second part of the project, I selected the **Cox proportional hazards model**, a statistical method that was not covered in this course. While the course introduced survival concepts such as confidence intervals for survival data, it did not cover time-to-event modeling, hazard functions, survival curves, or regression methods for censored data. Therefore, I chose the Cox model for Part II.
+
+The Cox proportional hazards model is widely used in biomedical and clinical research, especially in oncology, where outcomes are usually measured in **time to death, relapse, or progression**, rather than simple binary events. Cox regression allows researchers to estimate **hazard ratios (HRs)** that quantify the effect of biomarkers, treatments, or clinical variables on survival, making it highly relevant to real-world biomedical data analysis.
+
+#### 1.2 Description of the Analysis, R Packages, and Rationale
+
+The Cox model is a **semi parametric regression model** that relates the hazard of an event to multiple covariates. It does not assume a specific baseline hazard function, making it flexible for complex biomedical datasets. It also naturally accommodates **censored observations**, which are common in survival data.
+
+In this project, I used the following R packages:
+
+-   **survival** – for creating survival objects (`Surv()`), fitting Cox models (`coxph()`), and generating survival estimates (`survfit()`)
+-   **survminer** – for visualizing survival curves using `ggsurvplot()`, including confidence intervals and risk tables
+-   **dplyr** – for data manipulation
+
+This analysis is directly relevant to biomedical research because MGMT is an established **prognostic and predictive biomarker** in glioblastoma. MGMT promoter methylation and expression levels influence response to temozolomide and patient survival, and Cox models are routinely used in the literature to quantify these effects after adjusting for age, sex, or additional biomarkers.
+
+**Rationale for choosing the method:**\
+Compared with simpler alternatives such as the log-rank test (which only compares groups) or linear regression (which is inappropriate for censored data), the Cox model provides:
+
+-   Adjusted hazard ratios\
+-   The ability to include multiple covariates simultaneously\
+-   A proper statistical framework for censored survival times\
+-   Greater interpretability for clinical decision-making
+
+Thus, I learned that the Cox model is superior to methods learned in this course for analyzing time-to-event outcomes.
+
+#### 1.3 Description of the Dataset
+
+Part II uses the **same cleaned dataset** from Part I, derived from the TCGA PanCancer Atlas GBM cohort accessed through cBioPortal. Because the dataset has already been fully described and submitted in Part I, the data are not re-attached here, following the project instructions. The 0.5 points for data description are redistributed to the novelty and rationale components of the Introduction.
+
+```{r part2-setup, message=FALSE, warning=FALSE}
+library(dplyr)
+library(survival)
+library(survminer)
+
+# gbm_clean is assumed to be already loaded from Part I
+#dim(gbm_clean)
+head(gbm_clean)
+```
+
+```{r part2-surv-data, message=FALSE, warning=FALSE}
+
+# Create survival dataset from gbm_clean
+gbm_surv <-
+  gbm_clean |>
+  mutate(
+    # Event: 1 = death, 0 = censored
+    OS_event = ifelse(grepl("DECEASED|Dead|1", OS_STATUS, ignore.case = TRUE), 1, 0),
+    OS_MONTHS = as.numeric(OS_MONTHS)
+  )
+
+# Check event distribution and survival times
+table(gbm_surv$OS_event)
+summary(gbm_surv$OS_MONTHS)
+
+# Define MGMT high/low group based on median
+median_mgmt <- median(gbm_surv$MGMT, na.rm = TRUE)
+
+gbm_surv <-
+  gbm_surv |>
+  mutate(
+    MGMT_group = ifelse(MGMT >= median_mgmt, "High", "Low"),
+    MGMT_group = factor(MGMT_group, levels = c("Low", "High"))
+  )
+
+table(gbm_surv$MGMT_group)
+```
+
+### 2. Analysis
+
+#### 2.1 Kaplan–Meier Survival Curves and Log-rank Test
+
+##### Hypotheses
+
+-   **H₀:** The survival functions of the MGMT-high and MGMT-low groups are identical.\
+-   **H₁:** The survival functions differ between the two groups.
+
+The significance level was set at **α = 0.05** (95% confidence level).
+
+```{r part2-km, echo=TRUE, message=FALSE, warning=FALSE}
+# Kaplan–Meier fit
+km_fit <- survfit(Surv(OS_MONTHS, OS_event) ~ MGMT_group, data = gbm_surv)
+summary(km_fit)
+
+# Log-rank test
+logrank <- survdiff(Surv(OS_MONTHS, OS_event) ~ MGMT_group, data = gbm_surv)
+logrank
+
+# Log-rank p-value
+p_logrank <- 1 - pchisq(logrank$chisq, df = length(logrank$n) - 1)
+p_logrank
+```
+
+p = 0.06 , borderline.
+
+```{r fig-km-mgmt, fig.height=5, fig.width=7, fig.cap="Figure 4.Kaplan–Meier survival by MGMT expression group.",echo=TRUE, message=FALSE, warning=FALSE}
+ggsurvplot(
+  km_fit,
+  data = gbm_surv,
+  conf.int = TRUE,
+  pval = TRUE,
+  risk.table = TRUE,
+  legend.title = "MGMT expression",
+  legend.labs = c("Low", "High"),
+  xlab = "Overall survival (months)",
+  ylab = "Survival probability",
+  title = "Figure 4. Kaplan–Meier Survival by MGMT Expression Group",
+  risk.table.height = 0.3,
+  surv.plot.height  = 0.7
+)
+```
+
+#### 2.2 Cox Proportional Hazards Model
+
+##### Hypotheses
+
+-   **H₀:** The hazard ratio (HR) for MGMT-high vs. MGMT-low equals 1 (no effect).\
+-   **H₁:** The hazard ratio differs from 1.
+
+The significance level was α = **0.05**.
+
+```{r part2-cox, echo=TRUE}
+cox_fit <- coxph(
+  Surv(OS_MONTHS, OS_event) ~ MGMT_group + Diagnosis.Age + Sex,
+  data = gbm_surv)
+
+summary(cox_fit)
+```
+
+#### 2.3 Post hoc power / sample size calculation
+
+Required number of events and patients for this analysis to achieve 80% power (α = 0.05):
+
+```{r power-logrank, echo=TRUE}
+alpha <- 0.05
+beta  <- 0.20          # 1 - power = 0.2 → power = 0.8
+z_alpha <- qnorm(1 - alpha/2)
+z_beta  <- qnorm(1 - beta)
+
+HR   <- 1.56           # Use the observed HR as the target effect size
+p1   <- 0.5            # Proportion in the MGMT-high group (median split → ~0.5)
+
+# Required number of events for the log-rank/Cox test
+E_needed <- (z_alpha + z_beta)^2 / ((log(HR)^2) * p1 * (1 - p1))
+E_needed
+
+# Estimate required total sample size based on the observed event rate
+event_rate <- mean(gbm_surv$OS_event)
+N_needed   <- E_needed / event_rate
+N_needed
+
+```
+
+To evaluate whether the borderline MGMT results might be explained by limited power, I performed a post hoc sample size calculation using the observed hazard ratio for MGMT-high vs. MGMT-low (HR, approximately 1.56), assuming equal group sizes, a two-sided α = 0.05, and 80% power. The log-rank/Cox formula indicated that approximately 159 events are required to detect this effect, which, given the observed event rate in this cohort, corresponds to a total sample size of about 224 patients. In contrast, the current analysis included only 100 patients and 71 events, indicating that the study is underpowered to detect an HR of this magnitude and helping to explain why the MGMT effect remains only borderline significant.
+
+### 3. Results and interpretation (Part II)
+
+The Kaplan-Meier analysis compared overall survival between the MGMT-low and MGMT-high groups defined by the median MGMT mRNA expression. Visual inspection of the Kaplan–Meier curves suggested that patients in the MGMT-low group tended to have slightly better survival than those in the MGMT-high group. However, the log-rank test produced a borderline p-value (approximately p = 0.060), indicating that the difference in survival distributions between the two groups did not reach conventional statistical significance at the α = 0.05 level.
+
+The multivariable Cox proportional hazards model was used to further quantify the association between MGMT expression and survival while adjusting for age and sex. In this model:
+
+-   The **MGMT-high group** had an estimated hazard ratio of approximately **HR ≈ 1.56** compared with the MGMT-low group, corresponding to a **56% higher hazard of death**.\
+    The 95% confidence interval was roughly **0.96-2.53**, and the p-value was about **0.074**, again suggesting a trend but not a clearly statistically significant effect at α = 0.05.
+
+-   **Age at diagnosis** was a statistically significant predictor of mortality, with an estimated hazard ratio of about **HR ≈ 1.03 per year** (p \< 0.01). This implies that each additional year of age is associated with roughly a 3% increase in the hazard of death, consistent with the known adverse impact of older age on GBM prognosis.
+
+-   **Sex** was not significantly associated with overall survival (p \> 0.05), indicating no strong evidence that survival differs between male and female patients in this cohort after adjusting for MGMT expression and age.
+
+Overall model performance statistics, such as the likelihood ratio test (p ≈ 0.005) and a concordance index of approximately **0.65**, suggest that the Cox model provides a significantly better fit than a null model and has **moderate discriminative ability** for predicting survival.
+
+These results collectively indicate that higher MGMT expression may be associated with worse survival and that age is an important independent prognostic factor. However, the MGMT effect in this dataset should be interpreted cautiously because it is only borderline significant and the confidence interval for the hazard ratio includes 1.0.
+
+### 4. Conclusions and discussion (Part II)
+
+In Part II, I applied **Cox proportional hazards regression** to investigate the relationship between MGMT expression and overall survival in TCGA GBM patients. This analysis extends the Part I results by moving from simple cross-sectional comparisons to a time-to-event framework that can properly handle censored survival data and adjust for multiple covariates.
+
+The Kaplan-Meier and log-rank analyses showed a **trend toward better survival in the MGMT-low group** compared with the MGMT-high group, but the difference did not reach statistical significance at the α = 0.05 threshold. The Cox model yielded a **hazard ratio greater than 1 for the MGMT-high group**, suggesting that higher MGMT expression may be associated with increased mortality risk, although the effect was only borderline significant. Age emerged as a robust predictor of poorer survival, whereas sex did not show a significant effect after adjustment.
+
+From a biomedical perspective, these findings are consistent with the idea that MGMT is a clinically relevant biomarker in glioblastoma, but they also highlight the limitations of using mRNA expression alone in a relatively small cohort. In the literature, MGMT **promoter methylation** is often a stronger predictor of treatment response and survival than expression alone, and larger, more deeply annotated datasets are commonly used.
+
+This analysis demonstrates the practical value of the Cox model for:
+
+-   Quantifying biomarker effects in terms of hazard ratios
+-   Adjusting for important covariates such as age and sex
+-   Providing a richer description of survival patterns than simple group comparisons
+
+**Limitations** of this project include the modest sample size (n = 100), potential information loss from dichotomizing MGMT expression at the median, and the lack of additional molecular and treatment variables (e.g., MGMT promoter methylation, IDH1 mutation status, extent of resection, and temozolomide use). Future work could address these issues by:
+
+-   Incorporating MGMT promoter methylation and other genomic features into multivariable Cox models
+-   Exploring alternative ways of modeling MGMT (e.g., continuous, tertiles, clinically motivated cutoffs)
+-   Building more comprehensive prognostic models that include clinical, molecular, and treatment-related covariates
+-   Validating the findings in independent GBM cohorts
+
+Overall, Part II illustrates how Cox proportional hazards regression can be learned and applied using R to gain clinically meaningful insights from real-world cancer genomics data.
+
+## Appendix A – Data preprocessing code
+
+```{r data-prep-full, echo=TRUE, message=FALSE, warning=FALSE}
+library(dplyr)
+
+# 1. read two files
+clinical <- read.delim("gbm_tcga_pan_can_atlas_2018_clinical_data.tsv", sep = "\t")
+expr     <- read.delim("mRNA expression z-scores relative to all samples (log RNA Seq V2 RSEM).txt", sep = "\t")
+
+# 2. Sample ID match the name
+names(clinical)[names(clinical) %in% c("Sample.ID", "Sample ID")] <- "Sample_ID"
+names(expr)[names(expr) == "SAMPLE_ID"] <- "Sample_ID"
+
+# 3. Primary GBM selection
+clinical_primary <-
+  clinical |>
+  filter(Tumor.Type %in% c("Glioblastoma Multiforme (GBM)",
+                           "Glioblastoma Multiforme (GBM), Untreated"))
+
+# 4. Clinical + Expression merge
+gbm_merged <- merge(clinical_primary, expr, by = "Sample_ID", all.x = TRUE)
+
+# 5. OS colomn names simplify
+gbm_merged <-
+  gbm_merged |>
+  rename(
+    OS_MONTHS = Overall.Survival..Months.,
+    OS_STATUS = Overall.Survival.Status
+  )
+
+# 6. get rid of NAs
+gbm_clean <-
+  gbm_merged |>
+  select(
+    Sample_ID,
+    Patient.ID,
+    Diagnosis.Age,
+    Sex,
+    OS_MONTHS,
+    OS_STATUS,
+    Tumor.Type,
+    MGMT
+  ) |>
+  filter(
+    !is.na(MGMT),
+    !is.na(Diagnosis.Age),
+    !is.na(Sex),
+    !is.na(OS_MONTHS),
+    !is.na(OS_STATUS)
+  )
+
+# gbm_clean |> dim()
+gbm_clean |> head()
+
+
+# write.csv(gbm_clean, "GBM_MGMT_final_dataset.csv", row.names = FALSE)
+```
